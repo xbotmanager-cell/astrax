@@ -1,0 +1,155 @@
+/**
+ * AstraX - plugins/commands/owner/botname.js
+ * Change bot display name
+ * Max 25 characters - no hardcoded defaults
+ */
+
+export default {
+  name: 'botname',
+  alias: ['setname', 'namebot', 'changename'],
+  desc: 'Change or reset bot display name',
+  category: 'owner',
+  usage: '.botname <new_name> | .botname reset',
+  permission: 'owner',
+
+  async execute(sock, m, args, { db, logger, contextInfo, from, prefix }) {
+    try {
+      const [currentName, defaultName] = await Promise.all([
+        db.get('botname'),
+        db.get('default_botname')
+      ])
+
+      const fallbackName = defaultName || 'Bot'
+      const actualCurrent = currentName || fallbackName
+      const input = args.join(' ').trim()
+
+      // ─── IF NO ARGS: SHOW CURRENT NAME ───────────────────
+      if (!input) {
+        const infoText = `
+╭─────〔 BOT NAME 〕─────┈⊷
+│ ◦➛ Current: ${actualCurrent}
+│ ◦➛ Default: ${fallbackName}
+│ ◦➛ Max: 25 characters
+╰─────────────────────────⊷
+
+╭─────〔 COMMANDS 〕─────┈⊷
+│ ◦➛ ${prefix}botname ${fallbackName}
+│ ◦➛ ${prefix}botname MyBot Pro
+│ ◦➛ ${prefix}botname reset
+╰─────────────────────────⊷
+`
+        return await sock.sendMessage(from, {
+          text: infoText.trim(),
+          contextInfo
+        }, { quoted: m })
+      }
+
+      // ─── RESET TO DEFAULT ─────────────────────────────────
+      if (input.toLowerCase() === 'reset' || input.toLowerCase() === 'default') {
+        if (actualCurrent === fallbackName) {
+          const infoText = `
+╭─────〔 INFO 〕─────┈⊷
+│ ◦➛ Name is already default
+│ ◦➛ Current: ${fallbackName}
+╰─────────────────────────⊷
+`
+          return await sock.sendMessage(from, {
+            text: infoText.trim(),
+            contextInfo
+          }, { quoted: m })
+        }
+
+        await db.set('botname', fallbackName)
+
+        const successText = `
+╭─────〔 BOT NAME RESET 〕─────┈⊷
+│ ◦➛ From: ${actualCurrent}
+│ ◦➛ To: ${fallbackName}
+│ ◦➛ Status: Default ✅
+╰─────────────────────────⊷
+`
+        await sock.sendMessage(from, {
+          text: successText.trim(),
+          contextInfo
+        }, { quoted: m })
+
+        logger.success('BOTNAME', `Bot name reset to ${fallbackName} by ${m.key.participant || from}`)
+        return
+      }
+
+      // ─── VALIDATE NAME ──────────────────────────────────
+      if (input.length > 25) {
+        const errorText = `
+╭─────〔 ERROR 〕─────┈⊷
+│ ◦➛ Too long
+│ ◦➛ Max: 25 characters
+│ ◦➛ Your input: ${input.length}
+╰─────────────────────────⊷
+`
+        return await sock.sendMessage(from, {
+          text: errorText.trim(),
+          contextInfo
+        }, { quoted: m })
+      }
+
+      if (input.length < 2) {
+        const errorText = `
+╭─────〔 ERROR 〕─────┈⊷
+│ ◦➛ Too short
+│ ◦➛ Min: 2 characters
+╰─────────────────────────⊷
+`
+        return await sock.sendMessage(from, {
+          text: errorText.trim(),
+          contextInfo
+        }, { quoted: m })
+      }
+
+      // ─── CHECK IF SAME ────────────────────────────────────
+      if (actualCurrent === input) {
+        const infoText = `
+╭─────〔 INFO 〕─────┈⊷
+│ ◦➛ Name is already ${input}
+╰─────────────────────────⊷
+`
+        return await sock.sendMessage(from, {
+          text: infoText.trim(),
+          contextInfo
+        }, { quoted: m })
+      }
+
+      // ─── SET NEW NAME ───────────────────────────────────
+      await db.set('botname', input)
+
+      const isDefault = input === fallbackName
+      const statusText = isDefault ? 'Default ✅' : 'Custom ✅'
+
+      const successText = `
+╭─────〔 BOT NAME CHANGED 〕─────┈⊷
+│ ◦➛ From: ${actualCurrent}
+│ ◦➛ To: ${input}
+│ ◦➛ Status: ${statusText}
+╰─────────────────────────⊷
+`
+      await sock.sendMessage(from, {
+        text: successText.trim(),
+        contextInfo
+      }, { quoted: m })
+
+      logger.success('BOTNAME', `Bot name changed from ${actualCurrent} to ${input} by ${m.key.participant || from}`)
+
+    } catch (e) {
+      logger.error('BOTNAME', 'Failed to set bot name', e.message)
+
+      const errorText = `
+╭─────〔 ERROR 〕─────┈⊷
+│ ◦➛ ${e.message}
+╰─────────────────────────⊷
+`
+      await sock.sendMessage(from, {
+        text: errorText.trim(),
+        contextInfo
+      }, { quoted: m })
+    }
+  }
+}
