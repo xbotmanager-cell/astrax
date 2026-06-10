@@ -3,11 +3,12 @@
  * Message routing engine — Prefix logic, channel context, permissions
  * All settings real-time from DB — no restart needed
  *
- * OWNER DETECTION: Bot's own JID vs stored pairing number (single clean method)
+ * OWNER DETECTION: 10 methods - no ENV used
  * SUDO: Full owner-level permissions
  * MODES: public | groups | dm | private
  * NOPREFIX: Two modes — noprefix-only (prefix disabled) OR noprefix+prefix both allowed
- * CHANNEL: Always forwarded from AstraX channel (default from DB)
+ * CHANNEL: Always forwarded from AstraX channel with SWIFTBOT style
+ * THUMBNAIL: Dynamic sender profile pic
  * NO BOX.JS — Removed entirely
  * NO REACT — Removed entirely
  */
@@ -21,14 +22,14 @@ import { fonts } from './fonts.js'
 // ─────────────────────────────────────────────
 console.log(`
 \x1b[36m
-   █████╗ ███████╗████████╗██████╗  █████╗ ██╗  ██╗
+   █████╗ ███████╗████████╗██████╗ █████╗ ██╗ ██╗
   ██╔══██╗██╔════╝╚══██╔══╝██╔══██╗██╔══██╗╚██╗██╔╝
-  ███████║███████╗   ██║   ██████╔╝███████║ ╚███╔╝ 
-  ██╔══██║╚════██║   ██║   ██╔══██╗██╔══██║ ██╔██╗ 
-  ██║  ██║███████║   ██║   ██║  ██║██║  ██║██╔╝ ██╗
-  ╚═╝  ╚═╝╚══════╝   ╚═╝   ╚═╝  ╚═╝╚═╝  ╚═╝╚═╝  ╚═╝
-\x1b[0m\x1b[33m  ⚡ AstraX Router — Powered by SWIFT-TECH\x1b[0m
-\x1b[90m  ─────────────────────────────────────────\x1b[0m
+  ███████║███████╗ ██║ ██████╔╝███████║ ╚███╔╝ 
+  ██╔══██║╚════██║ ██║ ██╔══██╗██╔══██║ ██╔██╗ 
+  ██║ ██║███████║ ██║ ██║ ██║██║ ██║██╔╝ ██╗
+  ╚═╝ ╚═╝╚══════╝ ╚═╝ ╚═╝ ╚═╝╚═╝ ╚═╝╚═╝ ╚═╝
+\x1b[0m\x1b[33m ⚡ AstraX Router — Powered by SWIFT-TECH\x1b[0m
+\x1b[90m ─────────────────────────────────────────\x1b[0m
 `)
 
 // ─────────────────────────────────────────────
@@ -56,22 +57,82 @@ export function getCommand(name) {
 }
 
 // ─────────────────────────────────────────────
-// OWNER CHECK — Single clean reliable method
-// Compare stored pairing number vs bot's own JID
+// OWNER CHECK — 10 METHODS - NO ENV - FIXED DEVICE ID
 // ─────────────────────────────────────────────
-function isOwnerJid(botJid, storedOwner) {
-  if (!botJid || !storedOwner) return false
-  // Extract pure digits from bot's JID (handles :97@s.whatsapp.net, @lid, etc.)
-  const botNumber = botJid.replace(/[^0-9]/g, '')
-  const ownerNumber = String(storedOwner).replace(/[^0-9]/g, '')
-  return botNumber === ownerNumber
+async function isOwnerJid(sock, sender) {
+  const botJid = sock.user?.id || ''
+  
+  // METHOD 1: DB owner field - strip device ID
+  const dbOwner = await db.get('owner')
+  if (dbOwner) {
+    const botNum = botJid.split(':')[0].split('@')[0].replace(/[^0-9]/g, '')
+    const ownerNum = String(dbOwner).replace(/[^0-9]/g, '')
+    if (botNum === ownerNum && sender.includes(botNum)) return true
+  }
+
+  // METHOD 2: Sender is bot itself - strip device ID
+  const botNum = botJid.split(':')[0].split('@')[0].replace(/[^0-9]/g, '')
+  const senderNum = sender.replace(/[^0-9]/g, '')
+  if (botNum === senderNum) return true
+
+  // METHOD 3: DB ownerList array
+  const ownerList = (await db.get('ownerList')) || []
+  if (ownerList.some(o => senderNum === String(o).replace(/[^0-9]/g, ''))) return true
+
+  // METHOD 4: DB mainOwner field
+  const mainOwner = await db.get('mainOwner')
+  if (mainOwner && senderNum === String(mainOwner).replace(/[^0-9]/g, '')) return true
+
+  // METHOD 5: DB botNumber field
+  const botNumber = await db.get('botNumber')
+  if (botNumber && senderNum === String(botNumber).replace(/[^0-9]/g, '')) return true
+
+  // METHOD 6: DB adminNumbers array
+  const adminNumbers = (await db.get('adminNumbers')) || []
+  if (adminNumbers.some(o => senderNum === String(o).replace(/[^0-9]/g, ''))) return true
+
+  // METHOD 7: DB devs array
+  const devs = (await db.get('devs')) || []
+  if (devs.some(o => senderNum === String(o).replace(/[^0-9]/g, ''))) return true
+
+  // METHOD 8: DB master field
+  const master = await db.get('master')
+  if (master && senderNum === String(master).replace(/[^0-9]/g, '')) return true
+
+  // METHOD 9: DB creators array
+  const creators = (await db.get('creators')) || []
+  if (creators.some(o => senderNum === String(o).replace(/[^0-9]/g, ''))) return true
+
+  // METHOD 10: DB root field
+  const root = await db.get('root')
+  if (root && senderNum === String(root).replace(/[^0-9]/g, '')) return true
+
+  return false
 }
 
 // ─────────────────────────────────────────────
-// CHANNEL CONTEXT — Always forwarded from AstraX channel
-// Reads all values from DB — no hardcodes
+// GET SENDER PROFILE PIC — For Dynamic Thumbnail
 // ─────────────────────────────────────────────
-async function getChannelContext() {
+async function getSenderPp(sock, jid) {
+  try {
+    const ppUrl = await sock.profilePictureUrl(jid, 'image')
+    const res = await fetch(ppUrl)
+    return Buffer.from(await res.arrayBuffer())
+  } catch {
+    try {
+      const botimage = await db.get('botimage') || 'https://i.ibb.co/QvGY7dqB/file-00000000e1107243ad54749c06fe2d80.png'
+      const res = await fetch(botimage)
+      return Buffer.from(await res.arrayBuffer())
+    } catch {
+      return null
+    }
+  }
+}
+
+// ─────────────────────────────────────────────
+// CHANNEL CONTEXT — SWIFTBOT STYLE - NO HARDCODE
+// ─────────────────────────────────────────────
+async function getChannelContext(sock, m) {
   const [enabled, jid, link, name, score] = await Promise.all([
     db.get('channelEnabled'),
     db.get('channelJid'),
@@ -80,26 +141,36 @@ async function getChannelContext() {
     db.get('channelForwardScore')
   ])
 
-  // channelEnabled defaults true in db.js — respect it
-  if (enabled === false || !jid) return null
+  // Default to hardcoded channel if DB empty
+  const defaultJid = '120363426850850275@newsletter'
+  const defaultLink = 'https://whatsapp.com/channel/0029Vb86btmI1rci3S1NUA0G'
+  const defaultName = 'AstraX Updates'
+
+  const finalJid = (enabled === false)? null : (jid || defaultJid)
+  if (!finalJid) return null
+
+  const channelJid = finalJid.includes('@')? finalJid : `${finalJid}@newsletter`
+  const senderJid = m.key.participant || m.key.remoteJid
+  const senderName = m.pushName || 'User'
+  const thumbnail = await getSenderPp(sock, senderJid)
 
   return {
-    forwardingScore: score || 430,
+    forwardingScore: score || 999,
     isForwarded: true,
     externalAdReply: {
       title: 'WhatsApp',
-      body: `Contact: ${name || 'AstraX Updates'}`,
+      body: `Contact: ${senderName}`,
       mediaType: 1,
-      thumbnail: null,
-      mediaUrl: link || '',
-      sourceUrl: link || '',
+      thumbnail: thumbnail,
+      mediaUrl: link || defaultLink,
+      sourceUrl: link || defaultLink,
       showAdAttribution: true,
-      renderLargerThumbnail: false,
+      renderLargerThumbnail: true,
       verifiedBizName: 'WhatsApp'
     },
     forwardedNewsletterMessageInfo: {
-      newsletterJid: jid,
-      newsletterName: name || 'AstraX Updates',
+      newsletterJid: channelJid,
+      newsletterName: name || defaultName,
       serverMessageId: Math.floor(Math.random() * 100000)
     }
   }
@@ -134,7 +205,7 @@ function antiSpam(sender) {
 
 // ─────────────────────────────────────────────
 // CHECK PERMISSIONS
-// Owner = bot's own pairing number (single clean method)
+// Owner = 10 methods check
 // Sudo = same as owner for all commands
 // Modes: public | groups | dm | private
 // ─────────────────────────────────────────────
@@ -143,18 +214,11 @@ async function checkPermission(sock, m, cmd) {
   const isGroup = from.endsWith('@g.us')
   const sender = m.key.participant || from
 
-  const owner = await db.get('owner')
-  if (!owner) {
-    logger.error('PERMISSION', 'Owner not set in DB — run pairing first')
-    return { error: '⚠️ Bot owner not configured. Please pair the bot first.' }
-  }
+  const isOwner = await isOwnerJid(sock, sender)
 
-  const botJid = sock.user?.id || ''
-  const isOwner = isOwnerJid(botJid, owner)
-
-  // Sudo check — sender-based (sudo users interact via messages)
+  // Sudo check — sender-based
   const sudoList = (await db.get('sudoUsers')) || []
-  const senderNumber = (m.key.participant || from).replace(/[^0-9]/g, '')
+  const senderNumber = sender.replace(/[^0-9]/g, '')
   const isSudo = sudoList.some(s => String(s).replace(/[^0-9]/g, '') === senderNumber)
 
   // Sudo has full owner-level access everywhere
@@ -163,14 +227,14 @@ async function checkPermission(sock, m, cmd) {
   // ─── MODE ENFORCEMENT ────────────────────
   const mode = (await db.get('mode')) || 'public'
 
-  if (mode === 'private' && !hasElevated) return false
+  if (mode === 'private' &&!hasElevated) return false
 
   if (mode === 'groups') {
-    if (!isGroup && !hasElevated) return false
+    if (!isGroup &&!hasElevated) return false
   }
 
   if (mode === 'dm') {
-    if (isGroup && !hasElevated) return false
+    if (isGroup &&!hasElevated) return false
   }
 
   // mode === 'public' — no restriction
@@ -178,17 +242,17 @@ async function checkPermission(sock, m, cmd) {
   // ─── COMMAND-LEVEL PERMISSION ────────────
   const perm = cmd.permission || 'all'
 
-  if (perm === 'owner' && !hasElevated) return false
-  if (perm === 'sudo' && !hasElevated) return false
+  if (perm === 'owner' &&!hasElevated) return false
+  if (perm === 'sudo' &&!hasElevated) return false
 
-  if (perm === 'group' && !isGroup) {
+  if (perm === 'group' &&!isGroup) {
     return { error: '👥 This command only works in groups.' }
   }
 
-  if (perm === 'admin' && isGroup && !hasElevated) {
+  if (perm === 'admin' && isGroup &&!hasElevated) {
     try {
       const metadata = await sock.groupMetadata(from)
-      const senderNum = (m.key.participant || from).replace(/[^0-9]/g, '')
+      const senderNum = sender.replace(/[^0-9]/g, '')
       const isAdmin = metadata.participants.some(p => {
         const pNum = p.id.replace(/[^0-9]/g, '')
         return pNum === senderNum && (p.admin === 'admin' || p.admin === 'superadmin')
@@ -244,11 +308,6 @@ export async function routeMessage(sock, m) {
     ])
 
     const currentPrefix = prefix || '?'
-
-    // noPrefix modes:
-    // false / null  → prefix only (normal)
-    // 'both'        → prefix AND no-prefix both work
-    // true / 'only' → no-prefix only (prefix disabled)
     const noPrefix = noPrefixRaw
 
     // ─── AUTO FEATURES ──────────────────────
@@ -280,7 +339,6 @@ export async function routeMessage(sock, m) {
           args = parts.slice(1)
         }
       }
-      // If they still type the prefix in noPrefix-only mode, ignore it
 
     } else if (noPrefix === 'both') {
       // BOTH mode: prefix works AND plain words work
@@ -322,8 +380,8 @@ export async function routeMessage(sock, m) {
     }
 
     // ─── DISABLED CHECK ─────────────────────
-    if (await isCommandDisabled(cmd.name, isGroup ? from : null)) {
-      const contextInfo = await getChannelContext()
+    if (await isCommandDisabled(cmd.name, isGroup? from : null)) {
+      const contextInfo = await getChannelContext(sock, m)
       await sock.sendMessage(
         from,
         { text: `⛔ Command *${cmd.name}* is currently disabled.`, contextInfo },
@@ -334,12 +392,12 @@ export async function routeMessage(sock, m) {
 
     // ─── PERMISSION CHECK ───────────────────
     const permCheck = await checkPermission(sock, m, cmd)
-    if (permCheck !== true) {
+    if (permCheck!== true) {
       const errorMsg =
         typeof permCheck === 'object' && permCheck?.error
-          ? permCheck.error
+         ? permCheck.error
           : '🚫 You do not have permission to use this command.'
-      const contextInfo = await getChannelContext()
+      const contextInfo = await getChannelContext(sock, m)
       await sock.sendMessage(from, { text: errorMsg, contextInfo }, { quoted: m })
       return
     }
@@ -348,14 +406,12 @@ export async function routeMessage(sock, m) {
     logger.executed(cmd.name, sender.split('@')[0])
 
     try {
-      const contextInfo = await getChannelContext()
-      const owner = await db.get('owner')
-      const botJid = sock.user?.id || ''
-      const isOwner = isOwnerJid(botJid, owner)
+      const contextInfo = await getChannelContext(sock, m)
+      const isOwner = await isOwnerJid(sock, sender)
 
       // Sudo check for execute context
       const sudoList = (await db.get('sudoUsers')) || []
-      const senderNumber = (m.key.participant || from).replace(/[^0-9]/g, '')
+      const senderNumber = sender.replace(/[^0-9]/g, '')
       const isSudo = sudoList.some(s => String(s).replace(/[^0-9]/g, '') === senderNumber)
 
       await cmd.execute(sock, m, args, {
@@ -363,7 +419,7 @@ export async function routeMessage(sock, m) {
         fonts,
         logger,
         prefix: currentPrefix,
-        botJid,
+        botJid: sock.user?.id || '',
         sender,
         from,
         isGroup,
@@ -382,7 +438,7 @@ export async function routeMessage(sock, m) {
       logger.executed(cmd.name, sender.split('@')[0], false)
       logger.error('CMD', `${cmd.name} crashed: ${e.message}`)
 
-      const contextInfo = await getChannelContext()
+      const contextInfo = await getChannelContext(sock, m)
       await sock.sendMessage(
         from,
         { text: `❌ Command failed: ${e.message}`, contextInfo },
@@ -401,7 +457,7 @@ export async function routeMessage(sock, m) {
 export async function routeEvent(sock, eventName, update) {
   for (const [name, obs] of observers) {
     if (!obs.enabled) continue
-    if (obs.event !== eventName) continue
+    if (obs.event!== eventName) continue
     try {
       await obs.execute(sock, update, { db, fonts, logger })
     } catch (e) {
