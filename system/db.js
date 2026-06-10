@@ -32,8 +32,8 @@ export const DEFAULTS = {
 
   // Channel context (forwarded style — AstraX)
   channelEnabled: true,
-  channelJid: '0029VbCBgLmCMY0GES5inT3p',
-  channelLink: 'https://whatsapp.com/channel/0029VbCBgLmCMY0GES5inT3p',
+  channelJid: '120363426850850275@newsletter',
+  channelLink: 'https://whatsapp.com/channel/0029Vb86btmI1rci3S1NUA0G',
   channelName: 'AstraX Updates',
   channelForwardScore: 430,
 
