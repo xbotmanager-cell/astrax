@@ -12,11 +12,16 @@ export default {
   usage: 'gamesconfig pic on/off',
   permission: 'owner',
 
-  async execute(sock, m, args, { db, logger, contextInfo, from, isGroup }) {
+  async execute(sock, m, args, { db, logger, contextInfo, from, isGroup, prefix }) {
     try {
       if (!isGroup) {
+        const errorText = `
+╭─────〔 GAMES CONFIG 〕─────┈⊷
+│ ◦➛ This command only works in groups
+╰─────────────────────────⊷
+`
         return await sock.sendMessage(from, {
-          text: 'This command only works in groups',
+          text: errorText.trim(),
           contextInfo
         }, { quoted: m })
       }
@@ -50,7 +55,7 @@ export default {
 ╭─────〔 GAMES CONFIG 〕─────┈⊷
 │ ◦➛ Picture Mode: ${settings.picMode? 'ON ✅' : 'OFF ❌'}
 ├─────────────────────────⊷
-│ ◦➛ Usage:.gamesconfig pic on/off
+│ ◦➛ Usage: ${prefix}gamesconfig pic on/off
 ╰─────────────────────────⊷
 `
       await sock.sendMessage(from, {
