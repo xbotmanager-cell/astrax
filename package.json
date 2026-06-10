@@ -1,0 +1,26 @@
+{
+  "name": "astrax",
+  "version": "0.0.1",
+  "description": "AstraX - WhatsApp Bot Session Generator with Baileys + Pair Code + QR Live",
+  "main": "index.js",
+  "type": "module",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "author": "Lupin Starnley",
+  "contact": "255780470905",
+  "license": "ISC",
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "dependencies": {
+    "@whiskeysockets/baileys": "6.7.22",
+    "express": "^4.21.2",
+    "socket.io": "^4.8.1",
+    "pino": "^9.6.0",
+    "qrcode": "^1.5.4",
+    "cors": "^2.8.5",
+    "dotenv": "^16.4.7"
+  }
+}
