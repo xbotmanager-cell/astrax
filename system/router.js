@@ -16,8 +16,57 @@
 import { db } from './db.js'
 import { logger } from './logger.js'
 import { fonts } from './fonts.js'
-import { api } from './api.js'
 import sharp from 'sharp'
+
+// ─────────────────────────────────────────────
+// 5 WAYS API LOADER — NEVER EXIT ON FAIL
+// ─────────────────────────────────────────────
+let api = null
+async function loadApi() {
+  // Way 1: Direct import
+  try {
+    const mod = await import('./api.js')
+    api = mod.api
+    if (api) return logger.success('ROUTER', 'API loaded via Way 1: direct import')
+  } catch (e) {}
+
+  // Way 2: Dynamic import with full path
+  try {
+    const mod = await import('./api.js?t=' + Date.now())
+    api = mod.api
+    if (api) return logger.success('ROUTER', 'API loaded via Way 2: dynamic import')
+  } catch (e) {}
+
+  // Way 3: Try without.js extension
+  try {
+    const mod = await import('./api')
+    api = mod.api
+    if (api) return logger.success('ROUTER', 'API loaded via Way 3: no extension')
+  } catch (e) {}
+
+  // Way 4: Try../system/api.js
+  try {
+    const mod = await import('../system/api.js')
+    api = mod.api
+    if (api) return logger.success('ROUTER', 'API loaded via Way 4: parent path')
+  } catch (e) {}
+
+  // Way 5: Try absolute path fallback
+  try {
+    const mod = await import('/opt/render/project/src/system/api.js')
+    api = mod.api
+    if (api) return logger.success('ROUTER', 'API loaded via Way 5: absolute path')
+  } catch (e) {}
+
+  // All 5 ways failed - SKIP and continue, NEVER EXIT
+  logger.warn('ROUTER', 'API not available - commands will run without api context')
+  api = {
+    getSession: () => 'astra-fallback-' + Date.now(),
+    ai: { groq: async () => ({ success: false, error: 'API unavailable' }) }
+  }
+}
+
+await loadApi()
 
 // ─────────────────────────────────────────────
 // ASTRAX ASCII BANNER — Shown once at import
@@ -77,7 +126,7 @@ async function getSenderPp(sock, jid) {
     return await sharp(buf).resize(90, 90).jpeg({ quality: 80 }).toBuffer()
   } catch {
     try {
-      const botimage = await db.get('botimage') || 'https://i.ibb.co/QvGY7dqB/file-00000000e1107243ad54749c06fe2d80.png'
+      const botimage = await db.get('botimage') || 'https://i.ibb.co/QvGY7dqB/file-00000e1107243ad54749c06fe2d80.png'
       const res = await fetch(botimage)
       const buf = Buffer.from(await res.arrayBuffer())
       return await sharp(buf).resize(90, 90).jpeg({ quality: 80 }).toBuffer()
@@ -100,7 +149,7 @@ async function getChannelContext(sock, m) {
   ])
 
   // Default to hardcoded channel if DB empty
-  const defaultJid = '120363426850850275@newsletter'
+  const defaultJid = '120363426850275@newsletter'
   const defaultLink = 'https://whatsapp.com/channel/0029Vb86btmI1rci3S1NUA0G'
   const defaultName = 'AstraX Updates'
 
@@ -353,7 +402,7 @@ export async function routeMessage(sock, m) {
     if (permCheck!== true) {
       const errorMsg =
         typeof permCheck === 'object' && permCheck?.error
-     ? permCheck.error
+    ? permCheck.error
           : '🚫 You do not have permission to use this command.'
       const contextInfo = await getChannelContext(sock, m)
       await sock.sendMessage(from, { text: errorMsg, contextInfo }, { quoted: m })
