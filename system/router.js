@@ -16,6 +16,7 @@
 import { db } from './db.js'
 import { logger } from './logger.js'
 import { fonts } from './fonts.js'
+import sharp from 'sharp'
 
 // ─────────────────────────────────────────────
 // ASTRAX ASCII BANNER — Shown once at import
@@ -27,7 +28,7 @@ console.log(`
   ███████║███████╗ ██║ ██████╔╝███████║ ╚███╔╝
   ██╔══██║╚════██║ ██║ ██╔══██╗██╔══██║ ██╔██╗
   ██║ ██║███████║ ██║ ██║ ██║██╔╝ ██╗
-  ╚═╝ ╚═╝╚══════╝ ╚═╝ ╚═╝╚═╝ ╚═╝╚═╝ ╚═╝
+  ╚═╝ ╚═╝╚══════╝ ╚═╝╚═╝ ╚═╝╚═╝ ╚═╝
 \x1b[0m\x1b[33m ⚡ AstraX Router — Powered by SWIFT-TECH\x1b[0m
 \x1b[90m ─────────────────────────────────────────\x1b[0m
 `)
@@ -64,18 +65,21 @@ async function isOwnerJid(sock, sender) {
 }
 
 // ─────────────────────────────────────────────
-// GET SENDER PROFILE PIC — For Dynamic Thumbnail
+// GET SENDER PROFILE PIC — For Dynamic Thumbnail - RESIZED SMALL
 // ─────────────────────────────────────────────
 async function getSenderPp(sock, jid) {
   try {
     const ppUrl = await sock.profilePictureUrl(jid, 'image')
     const res = await fetch(ppUrl)
-    return Buffer.from(await res.arrayBuffer())
+    const buf = Buffer.from(await res.arrayBuffer())
+    // Resize to 90x90 for small thumbnail like pic 2
+    return await sharp(buf).resize(90, 90).jpeg({ quality: 80 }).toBuffer()
   } catch {
     try {
       const botimage = await db.get('botimage') || 'https://i.ibb.co/QvGY7dqB/file-00000000e1107243ad54749c06fe2d80.png'
       const res = await fetch(botimage)
-      return Buffer.from(await res.arrayBuffer())
+      const buf = Buffer.from(await res.arrayBuffer())
+      return await sharp(buf).resize(90, 90).jpeg({ quality: 80 }).toBuffer()
     } catch {
       return null
     }
@@ -83,7 +87,7 @@ async function getSenderPp(sock, jid) {
 }
 
 // ─────────────────────────────────────────────
-// CHANNEL CONTEXT — SWIFTBOT STYLE - NO HARDCODE
+// CHANNEL CONTEXT — SWIFTBOT STYLE - SMALL THUMBNAIL
 // ─────────────────────────────────────────────
 async function getChannelContext(sock, m) {
   const [enabled, jid, link, name, score] = await Promise.all([
@@ -118,7 +122,7 @@ async function getChannelContext(sock, m) {
       mediaUrl: link || defaultLink,
       sourceUrl: link || defaultLink,
       showAdAttribution: true,
-      renderLargerThumbnail: true,
+      renderLargerThumbnail: false,
       verifiedBizName: 'WhatsApp'
     },
     forwardedNewsletterMessageInfo: {
@@ -348,7 +352,7 @@ export async function routeMessage(sock, m) {
     if (permCheck!== true) {
       const errorMsg =
         typeof permCheck === 'object' && permCheck?.error
-       ? permCheck.error
+      ? permCheck.error
           : '🚫 You do not have permission to use this command.'
       const contextInfo = await getChannelContext(sock, m)
       await sock.sendMessage(from, { text: errorMsg, contextInfo }, { quoted: m })
