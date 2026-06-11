@@ -19,6 +19,7 @@ import { logger } from './system/logger.js'
 import { initLoader } from './system/loader.js'
 import { routeMessage, routeEvent } from './system/router.js'
 import { fonts } from './system/fonts.js'
+import { initApi } from './system/api.js'
 // FIXED: Skip if smartchannel missing
 let initSmartChannel = null
 try {
@@ -242,6 +243,7 @@ async function startBot() {
   console.log('[ENV] MONGO_URL exists:',!!process.env.MONGO_URL)
   await initDb()
   logger.success('DB', `Database mode: ${db.mode}`)
+  await initApi()
 
   // FIXED: No exit if session missing - just try QR
   if (!fs.existsSync(CREDS_PATH)) {
